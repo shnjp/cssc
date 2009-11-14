@@ -1,22 +1,38 @@
 Title: cssまわりのユーティリティ集
 Author: shn@glucose.jp
+Content-Type: text/x-rst
 
 概要
-==
+====
 
 make_sprite.py, to_gif.py, cssc.pyはCSSに関連するユーティリティ集です。手書きでCSSを書いちゃったりする人の負荷を軽減します。
 
-それぞれのファイルは::
+それぞれのファイルは:
 
-  make_sprite.py
-    yamlで書かれた定義ファイルから、CSSスプライトを生成します。
-    また、座標をjsonで出力して、cssc.pyを経由してCSSのbackground定義を自動生成することもできます。
+make_sprite.py
+  yamlで書かれた定義ファイルから、CSSスプライトを生成します。
+  また、座標をjsonで出力して、cssc.pyを経由してCSSのbackground定義を自動生成することもできます。
 
-  to_gif.py
-    IE6のために、PNGファイルをなるたけ綺麗にGIFに変換します。
+to_gif.py
+  IE6のために、PNGファイルをなるたけ綺麗にGIFに変換します。
 
-  cssc.py
-    CSSにネストが無いことに腹が立つ人用のコンバータです。
-    ネストしたstyle宣言をフラットにします。
-    またjinja2のテンプレート記法を用いて、変数宣言や、ループ、マクロなども使う事が可能です。
-    上述したmake_sprite.pyの座標定義をスタイルに変換したりもします。
+cssc.py
+  CSSにネストが無いことに腹が立つ人用のコンバータです。
+  ネストしたstyle宣言をフラットにします。
+  またjinja2のテンプレート記法を用いて、変数宣言や、ループ、マクロなども使う事が可能です。
+  上述したmake_sprite.pyの座標定義をスタイルに変換したりもします。
+  
+使い方
+======
+
+make_sprite.py
+--------------
+
+::
+    ./make_sprite.py -b test/images test/test.yaml
+
+to_gif.py
+----------
+
+cssc.py
+-------

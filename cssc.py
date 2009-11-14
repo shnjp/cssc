@@ -13,13 +13,25 @@ import jinja2
 import re
 import json
 
-def log(fmt, *args):
-    if args:
-        fmt = fmt % args
+# jinja2 
+sprite_coords = {}
+
+def jinja_sprite_background(sprite_name, image_name):
+    s = sprite_coords[sprite_name]
+    coord = s['coordinates'][image_name]
+    return 'background: url(%s) no-repeat -%dpx -%dpx' % (
+        s['url'], coord[0], coord[1]
+    )
 
 def renderTemplate(fp, variables={}):
+    # TODO　やっつけ
+    global jinja_variables
     template = jinja2.Template(fp.read().decode('utf8'))
-    return template.render(variables)
+    jinja_variables = {
+        'sprite_background': jinja_sprite_background
+    }
+    jinja_variables.update(variables)
+    return template.render(jinja_variables)
 
 class Declaration(object):
     @classmethod
@@ -174,21 +186,7 @@ class CSSCParser(object):
         selectors, declarations = tok.asList()
         return RuleSet(selectors, declarations)
     ruleset.setParseAction(ruleset_action)
-    
-    # debug
-    def log_action_creator(n, stacktrace=False):
-        def log_action(s, loc, tok):
-            import traceback
-            
-            log('%s:%4d: %s' % (n, loc, tok))
-            if stacktrace:
-                log('\n'.join(traceback.format_stack()))
-            return tok
-        return log_action
-    #class_.setParseAction(log_action_creator('class'))
-    #declaration.setParseAction(log_action_creator('declaration'))
-    #selector.setParseAction(log_action_creator('selector'))
-    
+        
     def __init__(self):
         """docstring for __init__"""
         pass
@@ -263,6 +261,7 @@ def parse_args():
                       help="variable definitions (JSON)", metavar="FILE")
     parser.add_option("-o", dest="output",
                       help="Output file name", metavar="FILE")
+    parser.add_option('--coords', action='append')
     parser.add_option("--css3", dest="css3", default=False, action="store_true",
                       help="Convert CSS3 vendor custom properties")
 
@@ -273,18 +272,35 @@ def main():
     options, args = parse_args()
     
     variables = {}
+    
     if options.variables:
         with open(options.variables, 'rb') as fp:
             for k, v in json.load(fp).iteritems():
                 if isinstance(k, unicode):
                     k = k.encode('utf8')
                 variables[k] = v
-
+    
+    # load sprite coordinates
+    if options.coords:
+        for coords_def in options.coords:
+            coords_name, url = coords_def.split(',', 1)
+            sprite_coords[coords_name] = {
+                'url': url,
+                'coordinates': json.load(open(coords_name + '.json', 'r'))
+            }
+            
+    middle = None
+    if 1:
+        middle = open('dump.cssc', 'w')
+    
     parser = CSSCParser()
     rules = []
     for fn in args:
         with open(fn, 'rb') as fp:
             cssbody = renderTemplate(fp, variables=variables)
+            if middle:
+                middle.write(cssbody)
+                middle.write('\n')
             rules.extend(parser.parseString(cssbody))
 
     if options.output:

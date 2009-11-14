@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python
+#!/usr/bin/env python
 # -*- coding:utf-8 -*-
 """
 yamlで書かれた段組を読み込んで、CSS Spriteを作成する。
