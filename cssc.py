@@ -145,7 +145,7 @@ class CSSCParser(object):
     attr_selector = Regex(r'\[[^]]*\]' % rex, re.I)
     ss_modifier = Or([HASH, class_, attrib, pseudo, attr_selector])
     simple_selector = Combine((element_name + ZeroOrMore(ss_modifier)) | OneOrMore(ss_modifier))
-    selector = simple_selector + ZeroOrMore(Optional(combinator) + simple_selector)
+    selector = OneOrMore(Optional(combinator) + simple_selector)
     selector.setName('selector')
     selector.setParseAction(Selector.action)
 
@@ -236,7 +236,8 @@ if 0:
     print cls.simple_selector.parseString('_:hover')
     print cls.selector.parseString('.disabled a', parseAll=True)
     print cls.selector.parseString('.site-header > #copyright')
-    print cls.selectors.parseString('h1:hover, h2:hover, h3:hover')
+    print cls.selectors.parseString('h1:hover, h2:hover, h3:hover', parseAll=True)
+    print cls.selectors.parseString('> label')
     print cls.term.parseString('100em')
     print cls.expr.parseString('#fff url(/static/img/bg/bg_map_04_brue_middle.png) top center repeat-x')
     print cls.declaration.parseString('filter: alpha(opacity=30)')
