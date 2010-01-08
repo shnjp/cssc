@@ -291,16 +291,14 @@ def main():
             }
             
     middle = None
-    if 1:
-        middle = open('dump.cssc', 'w')
-    
+
     parser = CSSCParser()
     rules = []
     for fn in args:
         with open(fn, 'rb') as fp:
             cssbody = renderTemplate(fp, variables=variables)
             if middle:
-                middle.write(cssbody)
+                middle.write(cssbody.encode('utf-8'))
                 middle.write('\n')
             rules.extend(parser.parseString(cssbody))
 
