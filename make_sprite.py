@@ -10,6 +10,7 @@ __author__ = 'shn@glucose.jp'
 import sys, os
 import yaml
 import PIL.Image
+Image = PIL.Image
 
 basedir = None
 
@@ -43,7 +44,32 @@ class Sprite(SpriteBase):
     
     def build_image(self):
         return self.image
-    
+
+class FillSprite(Sprite):
+    def __init__(self, parent, filename, image, filltype):
+        super(FillSprite, self).__init__(parent, filename, image)
+        self.filltype = filltype
+
+    def build_image(self):
+        if not self.parent:
+            return self.image
+        
+        assert isinstance(self.parent, SpriteSet)
+        
+        if self.parent.direction == HORIZONTAL:
+            # stretch verticaly
+            size = self.size[0], self.parent.size[1]
+        else:
+            size = self.parent.size[0], self.size[1]
+        
+        if self.filltype == 'stretch':
+            image = self.image.resize(size, Image.BICUBIC)
+        else:
+            image = PIL.Image.new('RGBA', self.size, 0x000000FF)
+            raise NotImplementedError
+        return image, size
+        
+
 class SpriteSet(SpriteBase):
     def __init__(self, parent, direction):
         assert direction in (HORIZONTAL, VERTICAL)
@@ -89,9 +115,14 @@ class SpriteSet(SpriteBase):
         
         for sprite in self.sprites:
             tl = sprite.topleft
-            sz = sprite.size
+            t = sprite.build_image()
+            if isinstance(t, (tuple, list)):
+                im, sz = t
+            else:
+                im = t
+                sz = sprite.size
             bounds = (tl[0], tl[1], tl[0] + sz[0], tl[1] + sz[1])
-            image.paste(sprite.build_image(), bounds)
+            image.paste(im, bounds)
         return image
 
     def dump_coords(self, base_topleft=(0, 0)):
@@ -117,23 +148,32 @@ class ImageLoader(object):
     def load_sprite(self, parent, dataset):
         assert parent is None or isinstance(parent, SpriteSet)
         
+        direction = HORIZONTAL
+        if parent:
+            direction = 1 - parent.direction
+
         if isinstance(dataset, str):
             # is sprite image file name.
             image = PIL.Image.open(os.path.join(self.base_dir, dataset))
             return Sprite(parent, dataset, image)
         elif isinstance(dataset, dict):
             # is sprite set
-            assert 'images' in dataset
-            
-            direction = HORIZONTAL if dataset.get('direction', S_HORIZONTAL) == S_HORIZONTAL else VERTICAL
-            imagelist = dataset['images']
-            
-            return self.load_sprite_set(parent, direction, imagelist)
+            if 'images' in dataset:
+                assert 'images' in dataset
+                
+                direction = HORIZONTAL if dataset.get('direction', S_HORIZONTAL) == S_HORIZONTAL else VERTICAL
+                imagelist = dataset['images']
+                
+                return self.load_sprite_set(parent, direction, imagelist)
+            elif 'fill' in dataset:
+                assert 'image' in dataset
+                
+                filename = dataset['image']
+                image = PIL.Image.open(os.path.join(self.base_dir, filename))
+                return FillSprite(parent, filename, image, dataset['fill'])
+                
         elif isinstance(dataset, list):
             # is sprite set by simple alsfjleaflasef. inverted direction of parent
-            direction = HORIZONTAL
-            if parent:
-                direction = 1 - parent.direction
             return self.load_sprite_set(parent, direction, dataset)
 
     def load_sprite_set(self, parent, direction, imagelist):
