@@ -16,11 +16,11 @@ import json
 # jinja2 
 sprite_coords = {}
 
-def jinja_sprite_background(sprite_name, image_name):
+def jinja_sprite_background(sprite_name, image_name, repeat='no-repeat'):
     s = sprite_coords[sprite_name]
     coord = s['coordinates'][image_name]
-    return 'background: url(%s) no-repeat -%dpx -%dpx' % (
-        s['url'], coord[0], coord[1]
+    return 'url(%s) %s -%dpx -%dpx' % (
+        s['url'], repeat, coord[0], coord[1]
     )
 
 def renderTemplate(fp, variables={}):
@@ -204,7 +204,10 @@ class CSSCParser(object):
 # CCS3
 CCS3_PROPERTIES = set([
     u'border-radius',
-    u'border-top-left-radius'
+    u'border-top-left-radius',
+    
+    u'background-size',
+    u'background-clip',
 ])
 
 def covert_css3_properties(rules):
@@ -285,22 +288,21 @@ def main():
     if options.coords:
         for coords_def in options.coords:
             coords_name, url = coords_def.split(',', 1)
-            sprite_coords[coords_name] = {
+            key = os.path.splitext(os.path.basename(coords_name))[0]
+            sprite_coords[key] = {
                 'url': url,
-                'coordinates': json.load(open(coords_name + '.json', 'r'))
+                'coordinates': json.load(open(coords_name, 'r'))
             }
             
     middle = None
-    if 1:
-        middle = open('dump.cssc', 'w')
-    
+
     parser = CSSCParser()
     rules = []
     for fn in args:
         with open(fn, 'rb') as fp:
             cssbody = renderTemplate(fp, variables=variables)
             if middle:
-                middle.write(cssbody)
+                middle.write(cssbody.encode('utf-8'))
                 middle.write('\n')
             rules.extend(parser.parseString(cssbody))
 
