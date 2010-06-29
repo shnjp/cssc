@@ -13,6 +13,20 @@ import jinja2
 import re
 import json
 
+
+# CCS3
+CCS3_PROPERTIES = set([
+    u'border-radius',
+    u'border-top-left-radius',
+    
+    u'background-size',
+    u'background-clip',
+    
+    u'text-shadow',
+    u'box-shadow'
+])
+
+
 # jinja2 
 sprite_coords = {}
 
@@ -33,7 +47,12 @@ def renderTemplate(fp, variables={}):
     jinja_variables.update(variables)
     return template.render(jinja_variables)
 
-class Declaration(object):
+
+class Renderable(object):
+    pass
+
+
+class Declaration(Renderable):
     @classmethod
     def action(cls, s, loc, tok):
         tokens = tok.asList()
@@ -43,11 +62,18 @@ class Declaration(object):
         self.property = property
         self.values = values
     
-    def __str__(self):
-        return '%s: %s;' % (self.property, ' '.join(self.values))
-    
     def clone(self):
         return Declaration(self.property, self.values[:])
+    
+    def render(self, options, output):
+        s = u'\t%s: %s;\n' % (self.property, ' '.join(self.values))
+        output.write(s.encode('utf8'))
+        
+        if options.css3:
+            if self.property in CCS3_PROPERTIES:
+                output.write('\t-moz-%s: %s;\n' % (self.property, ' '.join(self.values)))
+                output.write('\t-webkit-%s: %s;\n' % (self.property, ' '.join(self.values)))
+
     
 class Selector(object):
     @classmethod
@@ -64,7 +90,8 @@ class Selector(object):
     def __repr__(self):
         return '<Selector (%r)>' % self.tok
 
-class RuleSet(object):
+
+class RuleSet(Renderable):
     def __init__(self, selectors, declarations):
         """docstring for __init__"""
         self.selectors = selectors
@@ -76,11 +103,11 @@ class RuleSet(object):
                 self.declarations.append(x)
             if isinstance(x, RuleSet):
                 self.child_rules.append(x)
+
+    def render(self, options, output):
+        return self._render(options, output, [''])
                 
-    def render(self, output=sys.stdout):
-        return self._render(output, [''])
-    
-    def _render(self, output, parent_selectors):
+    def _render(self, options, output, parent_selectors):
         selectors = []
         for parent in parent_selectors:
             for child in self.selectors:
@@ -91,18 +118,14 @@ class RuleSet(object):
                     s = ('%s %s' % (parent, child)).strip()
                 selectors.append(s)
         
-        jointer = ', '
-        
-        o = [jointer.join(selectors), u' {\n']
+        output.write(u'%s {\n' % ', '.join(selectors))
         for dec in self.declarations:
-            o.append(u'\t%s\n' % dec)
-        o.append(u'}\n')
-        
-        output.write(u''.join(o).encode('utf8'))
+            dec.render(options, output)
+        output.write(u'}\n')
         
         # render children
         for child in self.child_rules:
-            child._render(output, selectors)
+            child._render(options, output, selectors)
     
     def __repr__(self):
         return '<RuleSet "%s": %s>' % (', '.join(str(x) for x in self.selectors), self.declarations)
@@ -112,12 +135,32 @@ class RuleSet(object):
         for child in self.child_rules:
             for x in child.iter_tree():
                 yield x
-        
 
-def iter_rules(rules):
-    for rule in rules:
-        for x in rule.iter_tree():
-            yield x
+
+class Media(Renderable):
+    @classmethod
+    def action(cls, s, loc, tok):
+        tokens = tok.asList()
+        medianame = tokens.pop(0).rstrip()
+        return cls(medianame, tokens)
+
+    def __init__(self, media, styles):
+        self.media = media
+        self.styles = styles
+
+    def render(self, options, output):
+        output.write('@media %s {\n' % self.media)
+        
+        for style in self.styles:
+            style.render(options, output)
+        
+        output.write('}\n\n')
+
+if 0:
+    def iter_rules(rules):
+        for rule in rules:
+            for x in rule.iter_tree():
+                yield x
             
 
 ###
@@ -127,7 +170,8 @@ class CSSCParser(object):
         'nmchar':   '[a-z0-9-\200-\377]'
     }
     #IDENT = ident = Regex('%(nmstart)s%(nmchar)s*' % rex, re.I)
-    IDENT = Regex(r'[a-z0-9_.+-]+', re.I)
+    #IDENT = Regex(r'[a-z0-9_.+-]+', re.I)
+    IDENT = Regex(r'[a-z0-9_.+-]+(\s+[a-z0-9_.+-]+)*', re.I)
     STRING = quotedString
     HASH = Regex('#%(nmchar)s*' % rex, re.I)
     
@@ -151,12 +195,13 @@ class CSSCParser(object):
 
     selectors = Group(selector + ZeroOrMore(Suppress(",") + selector))
     
-    variable = Suppress('{{') + IDENT + Suppress('}}')
+    #variable = Suppress('{{') + IDENT + Suppress('}}')
     
     VALUE = Regex(r'(-|\+)?(\d*\.\d+|\d+)(em|ex|px|cm|mm|in|pt|pc|deg|rad|grad|ms|s|Hz|kHz|%)?', re.I)
     property_ = IDENT
-    FUNCTION = IDENT + Suppress('(') + Regex('[^)]*') + Suppress(')')
-    term = VALUE | URI | HASH | FUNCTION | STRING | IDENT
+    term = Forward()
+    FUNCTION = IDENT + Suppress('(') + term + ZeroOrMore(Suppress(',') + term) + Suppress(')')
+    term << (VALUE | URI | HASH | FUNCTION | STRING | IDENT)
     expr = term + ZeroOrMore((oneOf("/ ,") | Empty()) + term)
     prio = Regex('!\\s*important', re.I)
     
@@ -170,23 +215,26 @@ class CSSCParser(object):
     declaration = property_ + Suppress(':') + expr + Optional(prio)
     declaration.setParseAction(Declaration.action)
     
-    declaration = ruleset | variable | declaration
+    #declaration = ruleset | variable | declaration
+    declaration = ruleset | declaration
     declarations = Group(ZeroOrMore(declaration + ZeroOrMore(Suppress(';'))))
     declarations.setName('declarations')
     
     ruleset << selectors + Suppress("{") + declarations + Suppress("}")
     ruleset.setName('ruleset')
-    stylesheet = ZeroOrMore(ruleset)
-    
-    css = stylesheet
-    cssComment = cppStyleComment 
-    css.ignore(cssComment)
-    
+
     def ruleset_action(s, loc, tok):
         selectors, declarations = tok.asList()
         return RuleSet(selectors, declarations)
     ruleset.setParseAction(ruleset_action)
-        
+    
+    media = Literal('@media').suppress() + Regex(r'[^{]+') + Suppress("{") + ZeroOrMore(ruleset) + Suppress("}")
+    media.setParseAction(Media.action).setName('media')
+    
+    css = ZeroOrMore(media | OneOrMore(ruleset))
+    cssComment = cppStyleComment 
+    css.ignore(cssComment)
+            
     def __init__(self):
         """docstring for __init__"""
         pass
@@ -201,39 +249,11 @@ class CSSCParser(object):
         """docstring for parseFile"""
         return self.parseString(fo.read())
 
-# CCS3
-CCS3_PROPERTIES = set([
-    u'border-radius',
-    u'border-top-left-radius',
-    
-    u'background-size',
-    u'background-clip',
-])
 
-def covert_css3_properties(rules):
-    """CSS3のプロパティをベンダ拡張に翻訳する"""
-    for rule in iter_rules(rules):
-        new_declarations = None
-        for idx, decl in enumerate(rule.declarations):
-            if isinstance(decl, Declaration):
-                if decl.property in CCS3_PROPERTIES:
-                    if new_declarations is None:
-                        new_declarations = rule.declarations[:idx]
-                    
-                    for prefix in ['moz', 'webkit']:
-                        x = decl.clone()
-                        x.property = '-%s-%s' % (prefix, x.property)
-                        new_declarations.append(x)
-                    
-            if new_declarations is not None:
-                new_declarations.append(decl)
-
-        if new_declarations is not None:
-            rule.declarations = new_declarations
-        
 # TEST
 cls = CSSCParser
 if 0:
+    print cls.FUNCTION.parseString('-webkit-gradient(linear, left top, left bottom, from(#cae5fe), to(#aacff2))', parseAll=True)
     print cls.VALUE.parseString('62.5%', parseAll=True)
     print cls.simple_selector.parseString('a:hover')
     print cls.simple_selector.parseString('_:hover')
@@ -250,12 +270,12 @@ if 0:
     print cls.declarations.parseString('font-size: 12pt; border: 1px solid none;')
     print cls.ruleset.parseString('textarea {}')
     print cls.expr.parseString('-9999px', parseAll=True)
-    print 
     print cls.selector.parseString('_ > div', parseAll=True)
     print cls.selector.parseString('input[type=text]', parseAll=True)
     print cls.selectors.parseString('input[type=text], input[type=password]', parseAll=True)
+    print cls.css.parseString('@media screen { body { background: blue; }}', parseAll=True)
     sys.exit(-1)
-    
+
 ### 
 def parse_args():
     from optparse import OptionParser
@@ -293,8 +313,9 @@ def main():
                 'url': url,
                 'coordinates': json.load(open(coords_name, 'r'))
             }
-            
+    
     middle = None
+    #middle = open('out.cssc', 'wt')
 
     parser = CSSCParser()
     rules = []
@@ -311,11 +332,8 @@ def main():
     else:
         output = sys.stdout
     
-    if options.css3:
-        covert_css3_properties(rules)
-
     for rule in rules:
-        rule.render(output)
+        rule.render(options, output)
         
 if __name__ == '__main__':
     main()
