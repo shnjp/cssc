@@ -37,16 +37,6 @@ def jinja_sprite_background(sprite_name, image_name, repeat='no-repeat'):
         s['url'], repeat, coord[0], coord[1]
     )
 
-def renderTemplate(fp, variables={}):
-    # TODO　やっつけ
-    global jinja_variables
-    template = jinja2.Template(fp.read().decode('utf8'))
-    jinja_variables = {
-        'sprite_background': jinja_sprite_background
-    }
-    jinja_variables.update(variables)
-    return template.render(jinja_variables)
-
 
 class Renderable(object):
     pass
@@ -315,17 +305,23 @@ def main():
             }
     
     middle = None
-    #middle = open('out.cssc', 'wt')
+    
+    # jinja2 setup
+    loader = jinja2.FileSystemLoader([os.path.dirname(path) for path in args])
+    env = jinja2.Environment(loader=loader)
+    env.globals.update({
+        'sprite_background': jinja_sprite_background
+    })
 
     parser = CSSCParser()
     rules = []
-    for fn in args:
-        with open(fn, 'rb') as fp:
-            cssbody = renderTemplate(fp, variables=variables)
-            if middle:
-                middle.write(cssbody.encode('utf-8'))
-                middle.write('\n')
-            rules.extend(parser.parseString(cssbody))
+    for path in args:
+        t = env.get_template(os.path.basename(path))
+        cssbody = t.render(variables)
+        if middle:
+            middle.write(cssbody.encode('utf-8'))
+            middle.write('\n')
+        rules.extend(parser.parseString(cssbody))
 
     if options.output:
         output = open(options.output, 'wb')
