@@ -22,6 +22,7 @@ CCS3_PROPERTIES = set([
     
     u'background-size',
     u'background-clip',
+    u'background-origin',
     
     u'text-shadow',
     u'box-shadow'
@@ -204,7 +205,7 @@ class CSSCParser(object):
         return tok.asList()[0][0]
     combinator.setParseAction(combinator_action)
         
-    simple_selector = Regex(r'\*|_|(_?[a-z0-9#:=\[\]\-\.]+)', re.I)
+    simple_selector = Regex(r'\*|(_?[a-z0-9#:_=\[\]\-\.]+)|_', re.I)
     selector = OneOrMore(Optional(combinator) + simple_selector)
     selector.setName('selector')
     selector.setParseAction(Selector.action)
@@ -363,7 +364,8 @@ def main():
     
     # jinja2 setup
     loader = jinja2.FileSystemLoader([os.path.dirname(path) for path in args])
-    env = jinja2.Environment(loader=loader)
+    env = jinja2.Environment(loader=loader,
+        extensions=['jinja2.ext.ExprStmtExtension'])
     env.globals.update({
         'sprite_background': jinja_sprite_background
     })
