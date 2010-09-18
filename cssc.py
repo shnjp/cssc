@@ -25,7 +25,12 @@ CCS3_PROPERTIES = set([
     u'background-origin',
     
     u'text-shadow',
-    u'box-shadow'
+    u'box-shadow',
+    
+    u'column-count',
+    u'column-gap',
+    u'column-rule',
+    u'column-width',
 ])
 
 
