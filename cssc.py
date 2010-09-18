@@ -210,12 +210,13 @@ class CSSCParser(object):
         return tok.asList()[0][0]
     combinator.setParseAction(combinator_action)
         
-    simple_selector = Regex(r'\*|(_?[a-z0-9#:_=\[\]\-\.]+)|_', re.I)
+    simple_selector = Regex(r'''\*|(_?[a-z0-9#:_=\[\]\-\."]+)|_''', re.I)
     selector = OneOrMore(Optional(combinator) + simple_selector)
     selector.setName('selector')
     selector.setParseAction(Selector.action)
 
     selectors = Group(selector + ZeroOrMore(Suppress(",") + selector))
+    selectors.setName('selectors')
     
     #variable = Suppress('{{') + IDENT + Suppress('}}')
     
@@ -224,7 +225,6 @@ class CSSCParser(object):
     term = Forward()
     FUNCTION = IDENT + Suppress('(') + term + ZeroOrMore(Suppress(',') + term) + Suppress(')')
     term << (VALUE | URI | HASH | FUNCTION | STRING | IDENT)
-    expr = term + ZeroOrMore((oneOf("/ ,") | Empty()) + term)
     prio = Regex('!\\s*important', re.I)
     
     ruleset = Forward()
@@ -234,11 +234,10 @@ class CSSCParser(object):
         return '%s(%s)' % (tok[0], ', '.join(tok[1:]))
     FUNCTION.setParseAction(function_action)
     
-    declaration_base = property_ + Suppress(':') + expr + Optional(prio)
-    declaration_base.setParseAction(Declaration.action)
+    declaration = property_ + Suppress(':') + Regex('[^;]+') + Suppress(';')
+    declaration.setParseAction(Declaration.action)
     
-    declaration = ruleset | declaration_base
-    declarations = Group(ZeroOrMore(declaration + ZeroOrMore(Suppress(';'))))
+    declarations = Group(ZeroOrMore(ruleset | declaration))
     declarations.setName('declarations')
     
     ruleset << selectors + Suppress("{") + declarations + Suppress("}")
@@ -249,23 +248,30 @@ class CSSCParser(object):
         return RuleSet(selectors, declarations)
     ruleset.setParseAction(ruleset_action)
     
+    # @media
     media = Literal('@media').suppress() + Regex(r'[^{]+') + Suppress("{") + ZeroOrMore(ruleset) + Suppress("}")
     media.setParseAction(Media.action).setName('media')
+    media.setName('@media')
     
     # @-webkit-keyframes
     frame_identifier = Regex('from|to|\d+%')
     keyframe = frame_identifier + Suppress('{') + \
-        Group(ZeroOrMore(declaration_base + ZeroOrMore(Suppress(';')))) + \
+        Group(ZeroOrMore(declaration + ZeroOrMore(Suppress(';')))) + \
         Suppress('}')
     keyframe.setParseAction(Keyframe.action)
     
     webkit_keyframes = Literal('@-webkit-keyframes').suppress() + Regex(r'[^{]+') + Suppress("{") + ZeroOrMore(keyframe) + Suppress("}")
     webkit_keyframes.setParseAction(WebkitKeyframes.action).setName('webkit_keyframes')
+    webkit_keyframes.setName('@-webkit-keyframes')
     
-    css = ZeroOrMore(media | webkit_keyframes | OneOrMore(ruleset))
-    cssComment = cppStyleComment 
-    css.ignore(cssComment)
-            
+    cssc = ZeroOrMore(media | webkit_keyframes | ruleset)
+    cssc.setName('cssc')
+    comments = cppStyleComment
+    cssc.ignore(comments)
+    
+    # deprecated
+    css = cssc
+    
     def __init__(self):
         """docstring for __init__"""
         pass
@@ -273,7 +279,7 @@ class CSSCParser(object):
     def parseString(self, txt):
         """docstring for parseString"""
         import pprint
-        results = self.css.parseString(txt, parseAll=True)
+        results = self.cssc.parseString(txt, parseAll=True)
         return results.asList()
     
     def parseFile(self, fp):
@@ -284,9 +290,25 @@ class CSSCParser(object):
 # TEST
 cls = CSSCParser
 def test():
-    def t(g, t, s):
-        print '%r == %r' % (t.parseString(s, parseAll=True), g)
+    def t(g, t, s, parseAll=True):
+        try:
+            print '%r == %r' % (t.parseString(s, parseAll=parseAll), g)
+        except ParseException, exc:
+            print >>sys.stderr, 'exception at : `%s`' % exc.markInputline('')
+            raise
 
+
+    def startDebugAction( instring, loc, expr ):
+        print ("Match " + str(expr) + " at loc " + str(loc) + "(%d,%d)" % ( lineno(loc,instring), col(loc,instring) ))
+
+    def successDebugAction( instring, startloc, endloc, expr, toks ):
+        print ("Matched " + str(expr) + " -> " + str(toks.asList()))
+
+    def exceptionDebugAction( instring, loc, expr, exc ):
+        print ("Exception raised:" + str(exc))
+
+    #cls.css.setDebugActions(startDebugAction, successDebugAction, exceptionDebugAction)
+    
     print cls.FUNCTION.parseString('-webkit-gradient(linear, left top, left bottom, from(#cae5fe), to(#aacff2))', parseAll=True)
     print cls.VALUE.parseString('62.5%', parseAll=True)
     print cls.simple_selector.parseString('a:hover')
@@ -297,19 +319,17 @@ def test():
     print cls.selectors.parseString('h1:hover, h2:hover, h3:hover', parseAll=True)
     print cls.selectors.parseString('> label')
     print cls.term.parseString('100em')
-    print cls.expr.parseString('#fff url(/static/img/bg/bg_map_04_brue_middle.png) top center repeat-x')
-    print cls.declaration.parseString('filter: alpha(opacity=30)')
-    print cls.declaration.parseString('margin-left: 10px !important')
-    print cls.declaration.parseString('font: 83%/1.4 Sans-Serif')
+    print cls.declaration.parseString('filter: alpha(opacity=30);')
+    print cls.declaration.parseString('margin-left: 10px !important;')
+    print cls.declaration.parseString('font: 83%/1.4 Sans-Serif;')
     print cls.declarations.parseString('font-size: 10%;')
     print cls.declarations.parseString('font-size: 12pt; border: 1px solid none;')
     print cls.ruleset.parseString('textarea {}')
-    print cls.expr.parseString('-9999px', parseAll=True)
     print cls.selector.parseString('_ > div', parseAll=True)
     print cls.selector.parseString('input[type=text]', parseAll=True)
     print cls.selectors.parseString('input[type=text], input[type=password]', parseAll=True)
     print cls.css.parseString('@media screen { body { background: blue; }}', parseAll=True)
-    t(['10px/30px'], cls.expr, '10px/30px')
+
     t([''], cls.webkit_keyframes, '''@-webkit-keyframes appear {
         0% {
             opacity: 0.0;
@@ -318,6 +338,20 @@ def test():
             opacity: 1.0;
         }
     }''')
+
+    t([], cls.declaration, 'font: normal 150% Georgia, serif;')
+    t([], cls.css, """.weekdays { font: normal 150% Georgia, serif; }""")
+    t([], cls.declarations, """\
+#header {
+    #site-logo {
+        a {
+            display: inline-block;
+        }
+    }
+}""")
+    t([], cls.selectors, """input[type="text"], input[type="password"], input.text""")
+
+    
     sys.exit(-1)
 
 ### 
@@ -387,9 +421,6 @@ def main():
         try:
             rules.extend(parser.parseString(cssbody))
         except ParseException, exc:
-            import traceback
-            traceback.print_exc()
-            
             print >>sys.stderr, 'exception at : `%s`' % exc.markInputline('')
             raise
             
