@@ -9,8 +9,11 @@ __author__ = 'shn@glucose.jp'
 #
 import sys, os
 import yaml
-import PIL.Image
-Image = PIL.Image
+
+try:
+    import Image
+except ImportError:
+    import PIL.Image as Image
 
 basedir = None
 
@@ -18,6 +21,7 @@ S_HORIZONTAL = 'horizontal'
 
 HORIZONTAL = 0
 VERTICAL = 1
+
 
 class SpriteBase(object):
     def __init__(self, parent):
@@ -30,6 +34,7 @@ class SpriteBase(object):
     # 
     def make_position(self):
         pass
+
     
 class Sprite(SpriteBase):
     def __init__(self, parent, filename, image):
@@ -65,7 +70,7 @@ class FillSprite(Sprite):
         if self.filltype == 'stretch':
             image = self.image.resize(size, Image.BICUBIC)
         else:
-            image = PIL.Image.new('RGBA', self.size, 0x000000FF)
+            image = Image.new('RGBA', self.size, 0x000000FF)
             raise NotImplementedError
         return image, size
         
@@ -111,7 +116,7 @@ class SpriteSet(SpriteBase):
             self.size = max_size, corner
 
     def build_image(self):
-        image = PIL.Image.new('RGBA', self.size, 0x000000FF)
+        image = Image.new('RGBA', self.size, 0x000000FF)
         
         for sprite in self.sprites:
             tl = sprite.topleft
@@ -154,7 +159,7 @@ class ImageLoader(object):
 
         if isinstance(dataset, str):
             # is sprite image file name.
-            image = PIL.Image.open(os.path.join(self.base_dir, dataset))
+            image = Image.open(os.path.join(self.base_dir, dataset))
             return Sprite(parent, dataset, image)
         elif isinstance(dataset, dict):
             # is sprite set
@@ -169,7 +174,7 @@ class ImageLoader(object):
                 assert 'image' in dataset
                 
                 filename = dataset['image']
-                image = PIL.Image.open(os.path.join(self.base_dir, filename))
+                image = Image.open(os.path.join(self.base_dir, filename))
                 return FillSprite(parent, filename, image, dataset['fill'])
                 
         elif isinstance(dataset, list):
