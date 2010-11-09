@@ -70,7 +70,13 @@ class Declaration(Renderable):
             if self.property in CCS3_PROPERTIES:
                 output.write('\t-moz-%s: %s;\n' % (self.property, ' '.join(self.values)))
                 output.write('\t-webkit-%s: %s;\n' % (self.property, ' '.join(self.values)))
-
+        
+        # opacity
+        if self.property == 'opacity':
+            opacity = float(' '.join(self.values))
+            output.write('\tfilter: alpha(opacity=%d);\n' % int(opacity * 100))
+            output.write('\t-moz-opacity: %f;\n' % opacity)
+        
     
 class Selector(object):
     @classmethod
