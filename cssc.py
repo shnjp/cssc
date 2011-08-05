@@ -198,6 +198,19 @@ class Keyframe(Renderable):
         output.write('}\n')
 
 
+class Charset(Renderable):
+    @classmethod
+    def action(cls, s, loc, tok):
+        tokens = tok.asList()
+        return cls(tokens[0])
+
+    def __init__(self, charset):
+        self.charset = charset
+
+    def render(self, options, output):
+        output.write('@charset %s;\n' % self.charset)
+
+
 ###
 class CSSCParser(object):
     rex = {
@@ -254,6 +267,10 @@ class CSSCParser(object):
         return RuleSet(selectors, declarations)
     ruleset.setParseAction(ruleset_action)
     
+    # @charset
+    charset = Literal('@charset').suppress() + STRING + Literal(';').suppress()
+    charset.setParseAction(Charset.action).setName('@charset')
+
     # @media
     media = Literal('@media').suppress() + Regex(r'[^{]+') + Suppress("{") + ZeroOrMore(ruleset) + Suppress("}")
     media.setParseAction(Media.action).setName('media')
@@ -270,7 +287,7 @@ class CSSCParser(object):
     webkit_keyframes.setParseAction(WebkitKeyframes.action).setName('webkit_keyframes')
     webkit_keyframes.setName('@-webkit-keyframes')
     
-    cssc = ZeroOrMore(media | webkit_keyframes | ruleset)
+    cssc = ZeroOrMore(charset | media | webkit_keyframes | ruleset)
     cssc.setName('cssc')
     comments = cppStyleComment
     cssc.ignore(comments)
@@ -313,8 +330,8 @@ def test():
     def exceptionDebugAction( instring, loc, expr, exc ):
         print ("Exception raised:" + str(exc))
 
-    #cls.css.setDebugActions(startDebugAction, successDebugAction, exceptionDebugAction)
-    
+
+    t([''], cls.charset, '''@charset "utf-8";''')
     print cls.FUNCTION.parseString('-webkit-gradient(linear, left top, left bottom, from(#cae5fe), to(#aacff2))', parseAll=True)
     print cls.VALUE.parseString('62.5%', parseAll=True)
     print cls.simple_selector.parseString('a:hover')
@@ -360,6 +377,7 @@ def test():
     
     sys.exit(-1)
 
+
 ### 
 def parse_args():
     from optparse import OptionParser
@@ -378,6 +396,7 @@ def parse_args():
 
     options, args = parser.parse_args()
     return options, args
+
 
 def main():
     options, args = parse_args()
